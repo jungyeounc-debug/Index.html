@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>말랑말랑 테트리스</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Jua&display=swap');
+
+        body {
+            font-family: 'Jua', sans-serif;
+            background-color: #fef08a; /* 밝고 따뜻한 노란색 배경 */
+            margin: 0;
+            overflow: hidden; /* 스크롤 방지 */
+            touch-action: none; /* 모바일에서 기본 터치 액션 방지 */
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            border-radius: 20px;
+            background-color: white;
+            overflow: hidden;
+            border: 8px solid #fca5a5; /* 부드러운 핑크색 테두리 */
+        }
+
+        /* 캔버스 스타일: 모서리를 둥글게 처리 */
+        canvas {
+            display: block;
+            border-radius: 12px;
+        }
+
+        /* 버튼 스타일링: 아이들이 누르기 쉽게 크고 귀엽게 */
+        .control-btn {
+            background: linear-gradient(145deg, #a7f3d0, #34d399); /* 민트색 그라데이션 */
+            border: 4px solid #10b981;
+            border-radius: 50%;
+            width: 70px;
+            height: 70px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2rem;
+            color: white;
+            box-shadow: 0 6px 0 #059669, 0 10px 10px rgba(0,0,0,0.2);
+            transition: all 0.1s;
+            cursor: pointer;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+        }
+
+        .control-btn:active {
+            transform: translateY(6px);
+            box-shadow: 0 0 0 #059669, 0 4px 4px rgba(0,0,0,0.2);
+        }
+
+        .drop-btn {
+            background: linear-gradient(145deg, #fbcfe8, #f472b6); /* 핑크색 그라데이션 */
+            border: 4px solid #ec4899;
+            box-shadow: 0 6px 0 #db2777, 0 10px 10px rgba(0,0,0,0.2);
+            border-radius: 20px;
+            width: 120px;
+        }
+        
+        .drop-btn:active {
+            transform: translateY(6px);
+            box-shadow: 0 0 0 #db2777, 0 4px 4px rgba(0,0,0,0.2);
+        }
+
+        /* 게임 오버/시작 화면 스타일 */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            border-radius: 12px;
+        }
+
+        /* 통통 튀는 애니메이션 */
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        .bouncing {
+            animation: bounce 2s infinite ease-in-out;
+        }
+
+        /* 블록 깨질 때 파티클 효과용 캔버스 */
+        #particle-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 5;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col items-center justify-center">
+
+    <!-- 제목 영역 -->
+    <div class="text-center mb-4 bouncing">
+        <h1 class="text-5xl md:text-6xl text-pink-500 font-bold" style="text-shadow: 3px 3px 0px white, -1px -1px 0 white, 1px -1px 0 white, -1px 1px 0 white, 1px 1px 0 white;">
+            말랑말랑 테트리스
+        </h1>
+        <p class="text-xl text-teal-600 mt-2 font-bold">블록을 예쁘게 쌓아봐요!</p>
+    </div>
+
+    <!-- 점수 및 다음 블록 표시 영역 -->
+    <div class="flex justify-between w-full max-w-sm px-4 mb-2">
+        <div class="bg-white px-4 py-2 rounded-2xl border-4 border-yellow-400 shadow-md flex items-center">
+            <span class="text-2xl text-yellow-600 mr-2">⭐</span>
+            <span id="score" class="text-3xl text-yellow-500 font-bold">0</span>
+        </div>
+        <div class="bg-white px-4 py-2 rounded-2xl border-4 border-blue-400 shadow-md flex items-center gap-2">
+            <span class="text-xl text-blue-500 font-bold">다음:</span>
+            <canvas id="next-piece-canvas" width="60" height="60"></canvas>
+        </div>
+    </div>
+
+    <!-- 메인 게임 영역 -->
+    <div id="game-container" class="relative">
+        <canvas id="tetris-canvas"></canvas>
+        <canvas id="particle-canvas"></canvas>
+        
+        <!-- 시작/게임오버 오버레이 -->
+        <div id="start-screen" class="overlay">
+            <div class="text-6xl mb-4">🧸</div>
+            <h2 class="text-4xl text-blue-500 font-bold mb-6 text-center leading-tight">
+                준비되었나요?<br>시작해볼까요!
+            </h2>
+            <button id="start-btn" class="bg-blue-400 hover:bg-blue-500 text-white text-3xl font-bold py-4 px-10 rounded-full border-4 border-blue-600 shadow-[0_6px_0_#2563eb,0_10px_10px_rgba(0,0,0,0.2)] transition-all active:translate-y-2 active:shadow-[0_0_0_#2563eb,0_4px_4px_rgba(0,0,0,0.2)]">
+                시작하기 🚀
+            </button>
+        </div>
+
+        <div id="game-over-screen" class="overlay hidden">
+            <div class="text-6xl mb-4">🎉</div>
+            <h2 class="text-4xl text-pink-500 font-bold mb-2">참 잘했어요!</h2>
+            <p class="text-2xl text-gray-600 mb-6">별을 <span id="final-score" class="text-yellow-500 text-4xl mx-1 font-bold">0</span>개 모았어요!</p>
+            <button id="restart-btn" class="bg-green-400 hover:bg-green-500 text-white text-3xl font-bold py-4 px-10 rounded-full border-4 border-green-600 shadow-[0_6px_0_#16a34a,0_10px_10px_rgba(0,0,0,0.2)] transition-all active:translate-y-2 active:shadow-[0_0_0_#16a34a,0_4px_4px_rgba(0,0,0,0.2)]">
+                다시 하기 🔄
+            </button>
+        </div>
+    </div>
+
+    <!-- 모바일/화면용 컨트롤 버튼 -->
+    <div class="mt-6 flex flex-col items-center gap-4">
+        <div class="flex gap-4 items-center">
+            <button id="btn-left" class="control-btn" aria-label="왼쪽으로 이동">
+                <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+            <button id="btn-rotate" class="control-btn bg-purple-400 border-purple-600 shadow-[0_6px_0_#7c3aed,0_10px_10px_rgba(0,0,0,0.2)] active:shadow-[0_0_0_#7c3aed,0_4px_4px_rgba(0,0,0,0.2)]" aria-label="회전하기" style="background: linear-gradient(145deg, #c4b5fd, #a78bfa);">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+            </button>
+            <button id="btn-right" class="control-btn" aria-label="오른쪽으로 이동">
+                <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+        </div>
+        <button id="btn-down" class="control-btn drop-btn text-2xl font-bold" aria-label="빨리 내리기">
+            빨리! 👇
+        </button>
+    </div>
+
+<script>
+    // --- 게임 설정 및 상수 ---
+    const COLS = 10;
+    const ROWS = 16; // 유아용이므로 높이를 낮춰서 빨리 끝날 수 있게 함
+    let BLOCK_SIZE = 30; // 화면 크기에 따라 동적으로 계산됨
+
+    const canvas = document.getElementById('tetris-canvas');
+    const ctx = canvas.getContext('2d');
+    
+    const nextCanvas = document.getElementById('next-piece-canvas');
+    const nextCtx = nextCanvas.getContext('2d');
+
+    const particleCanvas = document.getElementById('particle-canvas');
+    const pCtx = particleCanvas.getContext('2d');
+
+    // 유아들이 좋아할 만한 밝고 파스텔톤의 색상
+    const COLORS = [
+        null,
+        '#FF9AA2', // 1: T - 파스텔 핑크
+        '#FFB7B2', // 2: O - 살구색
+        '#FFDAC1', // 3: L - 연한 오렌지
+        '#E2F0CB', // 4: J - 연두색
+        '#B5EAD7', // 5: I - 민트색
+        '#C7CEEA', // 6: S - 연보라
+        '#FFF5BA'  // 7: Z - 연노랑
+    ];
+
+    // 테트로미노 모양 정의 (유아용이므로 모양을 조금 더 직관적으로 느낄 수 있게)
+    const SHAPES = [
+        [],
+        // T
+        [
+            [0, 1, 0],
+            [1, 1, 1],
+            [0, 0, 0],
+        ],
+        // O (네모)
+        [
+            [2, 2],
+            [2, 2],
+        ],
+        // L
+        [
+            [0, 3, 0],
+            [0, 3, 0],
+            [0, 3, 3],
+        ],
+        // J
+        [
+            [0, 4, 0],
+            [0, 4, 0],
+            [4, 4, 0],
+        ],
+        // I (긴 막대) - 유아용에서는 3칸짜리로 조금 짧게 조정
+        [
+            [0, 5, 0],
+            [0, 5, 0],
+            [0, 5, 0],
+        ],
+        // S
+        [
+            [0, 6, 6],
+            [6, 6, 0],
+            [0, 0, 0],
+        ],
+        // Z
+        [
+            [7, 7, 0],
+            [0, 7, 7],
+            [0, 0, 0],
+        ]
+    ];
+
+    // --- 게임 상태 변수 ---
+    let board = [];
+    let score = 0;
+    let isGameOver = false;
+    let isPlaying = false;
+    
+    let currentPiece = null;
+    let nextPiece = null;
+    
+    let dropCounter = 0;
+    // 아주 느린 속도 (초보/유아용) - 1.5초마다 떨어짐
+    let dropInterval = 1500; 
+    let lastTime = 0;
+    let animationId = null;
+
+    let particles = []; // 줄이 지워질 때 파티클 효과용 배열
+
+    // --- 오디오 콘텍스트 (사운드 효과용) ---
+    // 외부 파일 없이 브라우저 내장 Web Audio API 사용
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioContext();
+
+    function playSound(type) {
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+        
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        const now = audioCtx.currentTime;
+        
+        switch (type) {
+            case 'move':
+                // 귀여운 '뾱' 소리
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(400, now);
+                oscillator.frequency.exponentialRampToValueAtTime(600, now + 0.1);
+                gainNode.gain.setValueAtTime(0.3, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                oscillator.start(now);
+                oscillator.stop(now + 0.1);
+                break;
+            case 'rotate':
+                // '휘릭' 소리
+                oscillator.type = 'triangle';
+                oscillator.frequency.setValueAtTime(300, now);
+                oscillator.frequency.linearRampToValueAtTime(500, now + 0.1);
+                gainNode.gain.setValueAtTime(0.3, now);
+                gainNode.gain.linearRampToValueAtTime(0.01, now + 0.1);
+                oscillator.start(now);
+                oscillator.stop(now + 0.1);
+                break;
+            case 'drop':
+                // '툭' 소리
+                oscillator.type = 'square';
+                oscillator.frequency.setValueAtTime(150, now);
+                oscillator.frequency.exponentialRampToValueAtTime(100, now + 0.1);
+                gainNode.gain.setValueAtTime(0.3, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                oscillator.start(now);
+                oscillator.stop(now + 0.1);
+                break;
+            case 'clear':
+                // 기분 좋은 '띠링띠링' 화음
+                const osc2 = audioCtx.createOscillator();
+                osc2.type = 'sine';
+                osc2.frequency.setValueAtTime(523.25, now); // C5
+                osc2.connect(gainNode);
+                
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(659.25, now); // E5
+                
+                gainNode.gain.setValueAtTime(0.5, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                
+                oscillator.start(now);
+                osc2.start(now + 0.1);
+                oscillator.stop(now + 0.5);
+                osc2.stop(now + 0.6);
+                break;
+            case 'gameover':
+                // '띠요오옹' 소리
+                oscillator.type = 'sawtooth';
+                oscillator.frequency.setValueAtTime(300, now);
+                oscillator.frequency.exponentialRampToValueAtTime(50, now + 1);
+                gainNode.gain.setValueAtTime(0.5, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 1);
+                oscillator.start(now);
+                oscillator.stop(now + 1);
+                break;
+        }
+    }
+
+    // --- 초기화 및 리사이징 ---
+    function resizeCanvas() {
+        // 화면 크기에 맞춰 보드 크기 계산 (모바일 우선)
+        const maxWidth = Math.min(window.innerWidth * 0.9, 400); // 최대 너비 제한
+        const containerHeight = window.innerHeight * 0.55; // 화면 높이의 약 절반을 게임판으로
+        
+        // 열(COLS)과 행(ROWS) 비율에 맞춰 BLOCK_SIZE 계산
+        BLOCK_SIZE = Math.floor(Math.min(maxWidth / COLS, containerHeight / ROWS));
+        
+        // 너무 작아지지 않게 최소 크기 보장
+        if (BLOCK_SIZE < 20) BLOCK_SIZE = 20;
+
+        canvas.width = COLS * BLOCK_SIZE;
+        canvas.height = ROWS * BLOCK_SIZE;
+        
+        particleCanvas.width = canvas.width;
+        particleCanvas.height = canvas.height;
+
+        document.getElementById('game-container').style.width = `${canvas.width + 16}px`; // border 포함
+        
+        draw(); // 크기 변경 후 다시 그리기
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+
+    // --- 보드 및 조각 로직 ---
+    function createMatrix(w, h) {
+        const matrix = [];
+        while (h--) {
+            matrix.push(new Array(w).fill(0));
+        }
+        return matrix;
+    }
+
+    function createPiece() {
+        const typeId = Math.floor(Math.random() * (SHAPES.length - 1)) + 1;
+        return {
+            matrix: SHAPES[typeId],
+            pos: { x: Math.floor(COLS / 2) - Math.floor(SHAPES[typeId][0].length / 2), y: 0 },
+            colorId: typeId
+        };
+    }
+
+    // 충돌 감지
+    function collide(board, piece) {
+        const m = piece.matrix;
+        const o = piece.pos;
+        for (let y = 0; y < m.length; ++y) {
+            for (let x = 0; x < m[y].length; ++x) {
+                if (m[y][x] !== 0 &&
+                    (board[y + o.y] && board[y + o.y][x + o.x]) !== 0) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // 조각을 보드에 병합
+    function merge(board, piece) {
+        piece.matrix.forEach((row, y) => {
+            row.forEach((value, x) => {
+                if (value !== 0) {
+                    board[y + piece.pos.y][x + piece.pos.x] = value;
+                }
+            });
+        });
+    }
+
+    // 행렬 회전 (유아용이라 단순하게 구현)
+    function rotate(matrix) {
+        // T, O, L, J, I, S, Z 중 O(네모)는 회전 불필요
+        if (matrix.length === 2 && matrix[0].length === 2) return matrix;
+
+        const N = matrix.length;
+        const result = matrix.map((row, i) =>
+            row.map((val, j) => matrix[N - 1 - j][i])
+        );
+        return result;
+    }
+
+    function pieceRotate() {
+        if (!isPlaying || isGameOver) return;
+        const pos = currentPiece.pos.x;
+        let offset = 1;
+        
+        const originalMatrix = currentPiece.matrix;
+        currentPiece.matrix = rotate(currentPiece.matrix);
+        
+        // 벽 차기 (회전 시 벽에 걸리면 밀어내기)
+        while (collide(board, currentPiece)) {
+            currentPiece.pos.x += offset;
+            offset = -(offset + (offset > 0 ? 1 : -1));
+            if (offset > currentPiece.matrix[0].length) {
+                // 회전 불가능하면 원상복구
+                currentPiece.matrix = originalMatrix;
+                currentPiece.pos.x = pos;
+                return;
+            }
+        }
+        playSound('rotate');
+    }
+
+    // --- 파티클 효과 ---
+    function createParticles(y) {
+        for (let x = 0; x < canvas.width; x += 10) {
+            particles.push({
+                x: x,
+                y: y * BLOCK_SIZE + BLOCK_SIZE / 2,
+                vx: (Math.random() - 0.5) * 10,
+                vy: (Math.random() - 1) * 10,
+                size: Math.random() * 6 + 4,
+                color: ['#FF9AA2', '#FFF5BA', '#B5EAD7', '#C7CEEA'][Math.floor(Math.random() * 4)],
+                life: 1
+            });
+        }
+    }
+
+    function drawParticles() {
+        pCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            pCtx.fillStyle = p.color;
+            pCtx.globalAlpha = p.life;
+            pCtx.beginPath();
+            pCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            pCtx.fill();
+            
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.5; // 중력
+            p.life -= 0.05;
+            
+            if (p.life <= 0) {
+                particles.splice(i, 1);
+            }
+        }
+        pCtx.globalAlpha = 1;
+    }
+
+    // --- 점수 및 줄 지우기 ---
+    function boardSweep() {
+        let rowCount = 1;
+        let linesCleared = 0;
+        outer: for (let y = board.length - 1; y >= 0; --y) {
+            for (let x = 0; x < board[y].length; ++x) {
+                if (board[y][x] === 0) {
+                    continue outer;
+                }
+            }
+            
+            // 줄이 다 참
+            const row = board.splice(y, 1)[0].fill(0);
+            board.unshift(row);
+            ++y;
+            
+            linesCleared++;
+            createParticles(y);
+        }
+
+        if (linesCleared > 0) {
+            score += linesCleared * 10;
+            document.getElementById('score').innerText = score;
+            playSound('clear');
+            
+            // 점수가 오르면 속도가 아주 조금씩 빨라짐 (유아용이라 한계 설정)
+            dropInterval = Math.max(600, 1500 - (score * 5));
+        }
+    }
+
+    // --- 그리기 함수 ---
+    function drawBlock(ctx, x, y, color, isNext = false) {
+        const size = isNext ? 15 : BLOCK_SIZE; // 다음 블록은 조금 작게
+        const px = x * size;
+        const py = y * size;
+        const radius = isNext ? 4 : 8; // 둥근 모서리
+
+        ctx.fillStyle = color;
+        
+        // 둥근 사각형 그리기
+        ctx.beginPath();
+        ctx.moveTo(px + radius, py);
+        ctx.lineTo(px + size - radius, py);
+        ctx.quadraticCurveTo(px + size, py, px + size, py + radius);
+        ctx.lineTo(px + size, py + size - radius);
+        ctx.quadraticCurveTo(px + size, py + size, px + size - radius, py + size);
+        ctx.lineTo(px + radius, py + size);
+        ctx.quadraticCurveTo(px, py + size, px, py + size - radius);
+        ctx.lineTo(px, py + radius);
+        ctx.quadraticCurveTo(px, py, px + radius, py);
+        ctx.closePath();
+        ctx.fill();
+
+        // 젤리 느낌의 하이라이트 효과 (유아틱하게)
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.beginPath();
+        ctx.arc(px + size * 0.3, py + size * 0.3, size * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // 테두리
+        ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+
+    function drawMatrix(matrix, offset, context = ctx, isNext = false) {
+        matrix.forEach((row, y) => {
+            row.forEach((value, x) => {
+                if (value !== 0) {
+                    drawBlock(context, x + offset.x, y + offset.y, COLORS[value], isNext);
+                }
+            });
+        });
+    }
+
+    function drawNextPiece() {
+        nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+        if (nextPiece) {
+            // 중앙 정렬 계산
+            const offsetX = (4 - nextPiece.matrix[0].length) / 2;
+            const offsetY = (4 - nextPiece.matrix.length) / 2;
+            drawMatrix(nextPiece.matrix, { x: offsetX, y: offsetY }, nextCtx, true);
+        }
+    }
+
+    function draw() {
+        // 배경을 연한 하늘색 격자무늬로 채움
+        ctx.fillStyle = '#f0f9ff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // 옅은 격자 선 그리기
+        ctx.strokeStyle = '#e0f2fe';
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= canvas.width; i += BLOCK_SIZE) {
+            ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke();
+        }
+        for (let j = 0; j <= canvas.height; j += BLOCK_SIZE) {
+            ctx.beginPath(); ctx.moveTo(0, j); ctx.lineTo(canvas.width, j); ctx.stroke();
+        }
+
+        drawMatrix(board, { x: 0, y: 0 });
+        if (currentPiece) {
+            drawMatrix(currentPiece.matrix, currentPiece.pos);
+        }
+        
+        drawParticles();
+    }
+
+    // --- 게임 제어 흐름 ---
+    function pieceDrop() {
+        if (!isPlaying || isGameOver) return;
+        
+        currentPiece.pos.y++;
+        if (collide(board, currentPiece)) {
+            currentPiece.pos.y--;
+            merge(board, currentPiece);
+            playSound('drop');
+            boardSweep();
+            
+            // 새 조각 가져오기
+            currentPiece = nextPiece;
+            nextPiece = createPiece();
+            currentPiece.pos.y = 0;
+            drawNextPiece();
+            
+            // 새 조각이 나오자마자 충돌하면 게임 오버
+            if (collide(board, currentPiece)) {
+                gameOver();
+            }
+        }
+        dropCounter = 0;
+    }
+
+    function pieceMove(offset) {
+        if (!isPlaying || isGameOver) return;
+        currentPiece.pos.x += offset;
+        if (collide(board, currentPiece)) {
+            currentPiece.pos.x -= offset;
+        } else {
+            playSound('move');
+        }
+    }
+
+    function update(time = 0) {
+        if (!isPlaying) return;
+
+        const deltaTime = time - lastTime;
+        lastTime = time;
+
+        dropCounter += deltaTime;
+        if (dropCounter > dropInterval) {
+            pieceDrop();
+        }
+
+        draw();
+        
+        if (particles.length > 0) {
+             drawParticles(); // 파티클 애니메이션 유지를 위해 프레임마다 강제 호출
+        }
+
+        animationId = requestAnimationFrame(update);
+    }
+
+    function gameOver() {
+        isGameOver = true;
+        isPlaying = false;
+        cancelAnimationFrame(animationId);
+        playSound('gameover');
+        
+        document.getElementById('final-score').innerText = score;
+        document.getElementById('game-over-screen').classList.remove('hidden');
+    }
+
+    function startGame() {
+        // 사용자 인터랙션 발생 후 AudioContext 활성화 (브라우저 정책)
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+
+        board = createMatrix(COLS, ROWS);
+        score = 0;
+        document.getElementById('score').innerText = score;
+        dropInterval = 1500; // 초기 느린 속도로 리셋
+        
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('game-over-screen').classList.add('hidden');
+        
+        isGameOver = false;
+        isPlaying = true;
+        
+        nextPiece = createPiece();
+        currentPiece = createPiece();
+        drawNextPiece();
+        
+        lastTime = performance.now();
+        update();
+    }
+
+    // --- 이벤트 리스너 ---
+    document.getElementById('start-btn').addEventListener('click', startGame);
+    document.getElementById('restart-btn').addEventListener('click', startGame);
+
+    // 온스크린 컨트롤 버튼 (터치 및 클릭)
+    const btnLeft = document.getElementById('btn-left');
+    const btnRight = document.getElementById('btn-right');
+    const btnRotate = document.getElementById('btn-rotate');
+    const btnDown = document.getElementById('btn-down');
+
+    // 빠른 반응을 위해 touchstart와 mousedown 동시 지원 (중복 방지 로직 필요 없이 단순하게)
+    const addAction = (element, action) => {
+        element.addEventListener('mousedown', (e) => { e.preventDefault(); action(); });
+        element.addEventListener('touchstart', (e) => { e.preventDefault(); action(); }, {passive: false});
+    };
+
+    addAction(btnLeft, () => pieceMove(-1));
+    addAction(btnRight, () => pieceMove(1));
+    addAction(btnRotate, pieceRotate);
+    addAction(btnDown, pieceDrop);
+
+    // 키보드 컨트롤 지원
+    document.addEventListener('keydown', event => {
+        if (!isPlaying || isGameOver) return;
+        
+        switch (event.key) {
+            case 'ArrowLeft':
+                pieceMove(-1);
+                break;
+            case 'ArrowRight':
+                pieceMove(1);
+                break;
+            case 'ArrowDown':
+                pieceDrop();
+                break;
+            case 'ArrowUp':
+                pieceRotate();
+                break;
+        }
+    });
+
+    // 기본 터치 시 스크롤 방지 (게임 화면 내)
+    document.getElementById('game-container').addEventListener('touchmove', (e) => {
+        e.preventDefault();
+    }, { passive: false });
+
+    // 초기화 실행
+    resizeCanvas();
+    draw(); // 빈 보드 그리기
+</script>
+
+</body>
+</html>
